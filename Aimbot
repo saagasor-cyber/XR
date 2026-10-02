@@ -1,0 +1,185 @@
+-- Rayfield Library
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- Settings
+local Settings = {
+    AimbotEnabled = false,
+    ESPEnabled = false,
+    FOVVisible = false,
+    FOVRadius = 100,
+    TargetPart = "Head"
+}
+
+-- Drawing FOV Circle (Fixed at Center)
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Color = Color3.fromRGB(255, 50, 50)
+FOVCircle.Thickness = 1.5
+FOVCircle.NumSides = 64
+FOVCircle.Filled = false
+FOVCircle.Transparency = 1
+FOVCircle.Visible = false
+
+-- Create Rayfield Window
+local Window = Rayfield:CreateWindow({
+   Name = "XR-Aim🎯",
+   LoadingTitle = "XR-Aim Script",
+   LoadingSubtitle = "by Assistant",
+   ConfigurationSaving = {
+      Enabled = false
+   },
+   KeySystem = false
+})
+
+-- Main Tab
+local MainTab = Window:CreateTab("Main", 4483362458) -- Title, Image
+
+-- Aimbot Toggle
+MainTab:CreateToggle({
+   Name = "Aimbot",
+   CurrentValue = false,
+   Flag = "AimbotToggle",
+   Callback = function(Value)
+      Settings.AimbotEnabled = Value
+   end,
+})
+
+-- ESP Toggle
+MainTab:CreateToggle({
+   Name = "ESP Box",
+   CurrentValue = false,
+   Flag = "ESPToggle",
+   Callback = function(Value)
+      Settings.ESPEnabled = Value
+   end,
+})
+
+-- Show FOV Toggle
+MainTab:CreateToggle({
+   Name = "Show FOV Circle",
+   CurrentValue = false,
+   Flag = "FOVToggle",
+   Callback = function(Value)
+      Settings.FOVVisible = Value
+   end,
+})
+
+-- FOV Radius Slider
+MainTab:CreateSlider({
+   Name = "FOV Size",
+   Range = {10, 500},
+   Increment = 5,
+   Suffix = "px",
+   CurrentValue = 100,
+   Flag = "FOVSlider",
+   Callback = function(Value)
+      Settings.FOVRadius = Value
+   end,
+})
+
+-- Target Part Dropdown
+MainTab:CreateDropdown({
+   Name = "Target Part",
+   Options = {"Head", "HumanoidRootPart"},
+   CurrentOption = {"Head"},
+   MultipleOptions = false,
+   Flag = "TargetDropdown",
+   Callback = function(Option)
+      Settings.TargetPart = Option[1]
+   end,
+})
+
+-- Target Logic (Fixed Screen Center)
+local function GetClosestPlayerToCenter()
+    local target = nil
+    local shortestDistance = Settings.FOVRadius
+    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            local part = player.Character:FindFirstChild(Settings.TargetPart) or player.Character.HumanoidRootPart
+            local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+            
+            if onScreen then
+                local distance = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+                if distance < shortestDistance then
+                    shortestDistance = distance
+                    target = part
+                end
+            end
+        end
+    end
+    return target
+end
+
+-- ESP Logic
+local ESPBoxes = {}
+
+local function CreateESP(player)
+    local box = Drawing.new("Square")
+    box.Color = Color3.fromRGB(255, 50, 50)
+    box.Thickness = 1.5
+    box.Filled = false
+    box.Transparency = 1
+    box.Visible = false
+    ESPBoxes[player] = box
+end
+
+local function RemoveESP(player)
+    if ESPBoxes[player] then
+        ESPBoxes[player]:Remove()
+        ESPBoxes[player] = nil
+    end
+end
+
+for _, p in pairs(Players:GetPlayers()) do
+    if p ~= LocalPlayer then CreateESP(p) end
+end
+
+Players.PlayerAdded:Connect(CreateESP)
+Players.PlayerRemoving:Connect(RemoveESP)
+
+-- Main Loop
+RunService.RenderStepped:Connect(function()
+    -- Calculate Center of Screen
+    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    
+    -- Update FOV (Fixed at Center)
+    FOVCircle.Position = screenCenter
+    FOVCircle.Radius = Settings.FOVRadius
+    FOVCircle.Visible = Settings.FOVVisible
+
+    -- Aimbot Loop
+    if Settings.AimbotEnabled then
+        local target = GetClosestPlayerToCenter()
+        if target then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Position)
+        end
+    end
+
+    -- ESP Loop
+    for player, box in pairs(ESPBoxes) do
+        if Settings.ESPEnabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+            local hrp = player.Character.HumanoidRootPart
+            local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+            
+            if onScreen then
+                local sizeY = (Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, 3, 0)).Y - Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3.5, 0)).Y)
+                local sizeX = sizeY / 1.8
+                
+                box.Size = Vector2.new(math.abs(sizeX), math.abs(sizeY))
+                box.Position = Vector2.new(pos.X - box.Size.X / 2, pos.Y - box.Size.Y / 2)
+                box.Visible = true
+            else
+                box.Visible = false
+            end
+        else
+            box.Visible = false
+        end
+    end
+end)
